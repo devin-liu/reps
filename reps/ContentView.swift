@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @State private var timeElapsed = 0.0
@@ -26,15 +27,10 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 20) {
             // Task Input Section
-            TextEditor(text: $taskInput)
+            PasteAwareTextView(text: $taskInput, onPaste: processTasks)
                 .frame(height: 100)
-                .border(Color.gray, width: 1)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray, lineWidth: 1))
                 .padding()
-            
-            Button("Process Tasks") {
-                processTasks()
-            }
-            .disabled(taskInput.isEmpty)
             
             // Current Task Display
             if !tasks.isEmpty {
@@ -88,25 +84,21 @@ struct ContentView: View {
             
             // Lap Times List
             if !laps.isEmpty {
-                ScrollView {
-                    LazyVStack(alignment: .leading) {
-                        ForEach(Array(zip(laps.indices, laps)), id: \.0) { index, lap in
-                            VStack(alignment: .leading) {
-                                HStack {
-                                    Text("Task \(laps.count - index):")
-                                        .font(.headline)
-                                    Spacer()
-                                    Text(formatTime(lap))
-                                        .font(.system(.body, design: .monospaced))
-                                }
-                                if index < tasks.count {
-                                    Text(tasks[min(laps.count - index - 1, tasks.count - 1)])
-                                        .font(.subheadline)
-                                        .foregroundColor(.blue)
-                                }
+                List {
+                    ForEach(Array(zip(laps.indices, laps)), id: \.0) { index, lap in
+                        VStack(alignment: .leading) {
+                            HStack {
+                                Text("Task \(laps.count - index):")
+                                    .font(.headline)
+                                Spacer()
+                                Text(formatTime(lap))
+                                    .font(.system(.body, design: .monospaced))
                             }
-                            .padding(.horizontal)
-                            Divider()
+                            if index < tasks.count {
+                                Text(tasks[min(laps.count - index - 1, tasks.count - 1)])
+                                    .font(.subheadline)
+                                    .foregroundColor(.blue)
+                            }
                         }
                     }
                 }
@@ -164,5 +156,47 @@ struct ContentView: View {
         let seconds = Int(time) % 60
         let milliseconds = Int((time.truncatingRemainder(dividingBy: 1)) * 100)
         return String(format: "%02d:%02d.%02d", minutes, seconds, milliseconds)
+    }
+}
+
+struct PasteAwareTextView: UIViewRepresentable {
+    @Binding var text: String
+    var onPaste: () -> Void
+    
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.font = UIFont.preferredFont(forTextStyle: .body)
+        return textView
+    }
+    
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        uiView.text = text
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UITextViewDelegate {
+        var parent: PasteAwareTextView
+        
+        init(_ parent: PasteAwareTextView) {
+            self.parent = parent
+        }
+        
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+        }
+        
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            if UIPasteboard.general.hasStrings {
+                // Delay the onPaste call to ensure the text is updated first
+                DispatchQueue.main.async {
+                    self.parent.onPaste()
+                }
+            }
+            return true
+        }
     }
 }
